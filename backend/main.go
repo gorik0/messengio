@@ -2,76 +2,116 @@ package main
 
 import (
 	"github.com/gorilla/websocket"
+	"log"
 	. "messengio/utils/error"
 	"net/http"
 )
 
 func main() {
 
-	store, err := NewSqlStore("./db/chat.db")
-	HandlerError(err, "while connecting to database")
-	server := NewServer(store)
-	http.ListenAndServe(":8080", server)
+	server := NewServer()
+	go server.listenChannels()
+	port := ":8080"
+	log.Println("Starting server at ::: ", port)
+	HandlerError(http.ListenAndServe(port, server), "error while starting server")
 }
 
 type Server struct {
-	upgrader websocket.Upgrader
-	mux      *http.ServeMux
-	store    Store
+	upgrader         websocket.Upgrader
+	mux              *http.ServeMux
+	client           []*Client
+	msgChannel       chan Message
+	registerClient   chan *Client
+	unregisterClient chan *Client
 }
 
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
-	s.mux.ServeHTTP(w, r)
-
-}
-
-func (s *Server) handleWs(writer http.ResponseWriter, request *http.Request) {
-
-	conn, err := s.upgrader.Upgrade(writer, request, nil)
+	conn, err := s.upgrader.Upgrade(w, r, nil)
 	HandlerError(err, "while upgrading to websocket")
-	defer conn.Close()
 
-	readMsgs(conn, s.store)
+	//defer conn.Close()
+
+	newClient := NewClient(conn)
+	s.registerClient <- newClient
+
+	go readMsgs(newClient, s)
 }
 
-func readMsgs(conn *websocket.Conn, store Store) {
+func (s *Server) listenChannels() {
 	for {
-		//	 :::GET MSG
-		_, msgBytes, err := conn.ReadMessage()
 
-		if err != nil {
-			HandlerErrorLite(err, "add message to store")
-			break
+		select {
+		case client := <-s.unregisterClient:
+			{
+				for i, c := range s.client {
+					if c == client {
+						s.client = append(s.client[:i], s.client[i:]...)
+						break
+					}
 
+				}
+			}
+		case client := <-s.registerClient:
+			{
+
+				s.client = append(s.client, client)
+			}
+		case msg := <-s.msgChannel:
+			{
+				for _, client := range s.client {
+
+					if msg.author.name == "" {
+						msg.author.name = "bobi"
+					}
+					msgUI := msg.author.name + " | " + string(msg.content)
+					client.write([]byte(msgUI))
+
+				}
+			}
 		}
-		println("store", store)
-		println("GORIOoooo   :::: ", (string(msgBytes)))
+	}
+}
 
-		//	 :::ADD MSG
-		err = store.PushMessage(string(msgBytes))
+func readMsgs(client *Client, server *Server) {
+	for {
+
+		//	::RECIVE MSG
+		_, msgBytes, err := client.conn.ReadMessage()
 		if err != nil {
-			HandlerErrorLite(err, "add message to store")
-			break
-
+			HandlerErrorLite(err, "error while reading message")
+			return
 		}
+
+		log.Println("GOTTA msg ", string(msgBytes)) //	:::SEND MSG TO ALL
+
+		msg := Message{
+			content: msgBytes,
+			author:  client,
+		}
+		server.msgChannel <- msg
 
 	}
 }
 
-func NewServer(store Store) *Server {
-	mux := http.NewServeMux()
+func NewServer() *Server {
 
 	upgrader := websocket.Upgrader{
+		CheckOrigin: func(r *http.Request) bool {
+			return true
+		},
 		ReadBufferSize:  1024,
 		WriteBufferSize: 1024,
 	}
 
-	server := &Server{
-		upgrader: upgrader,
-		mux:      mux,
-		store:    store,
+	msgChannel := make(chan Message)
+	registerClient := make(chan *Client)
+	unregisterClient := make(chan *Client)
+
+	return &Server{
+		upgrader:         upgrader,
+		msgChannel:       msgChannel,
+		registerClient:   registerClient,
+		unregisterClient: unregisterClient,
 	}
-	mux.HandleFunc("/ws", server.handleWs)
-	return server
 }

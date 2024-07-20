@@ -1,30 +1,46 @@
-<script setup>
-import HelloWorld from './components/HelloWorld.vue'
+<script setup lang="ts">
+import { Ref, ref } from "vue";
+
+let messages: Ref<string[]> = ref([]);
+let message = ref("");
+
+const ws = new WebSocket("ws://localhost:8080/ws");
+ws.onopen = () => {
+  console.log("connected");
+};
+ws.onmessage = (event) => {
+  const content = event.data as string;
+  messages.value.push(content);
+};
+ws.onclose = () => {
+  console.log("disconnected");
+};
+
+const sendMessage = () => {
+  ws.send(message.value);
+  console.log("sent: ", message.value);
+  message.value = "";
+};
 </script>
 
 <template>
-  <div>
-    <a href="https://vitejs.dev" target="_blank">
-      <img src="/vite.svg" class="logo" alt="Vite logo" />
-    </a>
-    <a href="https://vuejs.org/" target="_blank">
-      <img src="./assets/vue.svg" class="logo vue" alt="Vue logo" />
-    </a>
-  </div>
-  <HelloWorld msg="Vite + Vue" />
-</template>
+  <div class="mx-auto max-w-md">
+    <h1 class="my-4 text-2xl text-center">Chat</h1>
 
-<style scoped>
-.logo {
-  height: 6em;
-  padding: 1.5em;
-  will-change: filter;
-  transition: filter 300ms;
-}
-.logo:hover {
-  filter: drop-shadow(0 0 2em #646cffaa);
-}
-.logo.vue:hover {
-  filter: drop-shadow(0 0 2em #42b883aa);
-}
-</style>
+    <input
+        v-model="message"
+        @keyup.enter="sendMessage"
+        class="p-2 w-full rounded-md border shadow"
+        type="text"
+        placeholder="Type a message"
+    />
+
+    <div class="my-4 space-y-4 text-slate-600">
+      <div v-for="msg in messages" class="py-1">
+        <span class="py-2 px-4 bg-white rounded-md border shadow">{{
+            msg
+          }}</span>
+      </div>
+    </div>
+  </div>
+</template>
