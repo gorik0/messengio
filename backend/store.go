@@ -2,12 +2,15 @@ package main
 
 import (
 	"database/sql"
+	_ "github.com/mattn/go-sqlite3"
 )
 
 type Store interface {
 	GetMessages() ([]string, error)
 	PushMessage(msg string) error
 }
+
+//::: MEMORY STORE
 
 type MemoryStore struct {
 	messages []string
@@ -29,12 +32,15 @@ func NewStore() Store {
 	return &MemoryStore{}
 }
 
+//:::: SQL STORE
+
 type SqlStore struct {
 	db *sql.DB
 }
 
 func (s SqlStore) GetMessages() ([]string, error) {
 	q := "SELECT message FROM messages  "
+
 	query, err := s.db.Query(q, nil)
 	var msgs []string
 	if err != nil {
@@ -43,6 +49,7 @@ func (s SqlStore) GetMessages() ([]string, error) {
 
 	for query.Next() {
 		var msg string
+
 		err := query.Scan(&msg)
 		if err != nil {
 			return nil, err
@@ -54,6 +61,7 @@ func (s SqlStore) GetMessages() ([]string, error) {
 }
 
 func (s SqlStore) PushMessage(msg string) (err error) {
+
 	q := "INSERT INTO messages (message) VALUES (?)"
 	_, err = s.db.Exec(q, msg)
 	return err
@@ -61,8 +69,18 @@ func (s SqlStore) PushMessage(msg string) (err error) {
 
 var _ Store = &SqlStore{}
 
-func NewSqlStore(db *sql.DB) (Store, error) {
-	_, err := db.Exec("CREATE TABLE IF NOT EXISTS messages (message TEXT)")
+func NewSqlStore(dbpath string) (Store, error) {
+
+	db, err := sql.Open("sqlite3", dbpath)
+	if err != nil {
+		return nil, err
+	}
+
+	//_, err = db.Exec("delete from messages")
+	//if err != nil {
+	//	return nil, err
+	//}
+	_, err = db.Exec("CREATE TABLE IF NOT EXISTS messages (message TEXT)")
 	if err != nil {
 		return nil, err
 	}

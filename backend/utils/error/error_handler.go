@@ -11,6 +11,12 @@ func HandlerError(err error, msg string) {
 		log.Fatalf("ERR :::: %s  ::: %v \n", msg, err)
 	}
 }
+func HandlerErrorLite(err error, msg string) {
+
+	if err != nil {
+		log.Printf("ERR :::: %s  ::: %v \n", msg, err)
+	}
+}
 func TestHandlerError(t *testing.T, err error, msg string) {
 
 	if err != nil {
